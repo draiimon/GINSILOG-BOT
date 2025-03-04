@@ -16,7 +16,7 @@ async function sendMessageWithPermissionsCheck(channel, embed, attachment, actio
             !permissions.has(PermissionsBitField.Flags.EmbedLinks) ||
             !permissions.has(PermissionsBitField.Flags.AttachFiles) ||
             !permissions.has(PermissionsBitField.Flags.UseExternalEmojis)) {
-            console.error("Bot lacks necessary permissions to send messages in this channel.");
+             console.error("PUTANGINA MO! KULANG PERMISSION KO GAGO! PAANO AKO MAGPAPATUGTOG NYAN?! AYUSIN MO MUNA YANG PERMISSION KO BOBO!");
             return;
         }
 
@@ -27,220 +27,22 @@ async function sendMessageWithPermissionsCheck(channel, embed, attachment, actio
         });
         return message;
     } catch (error) {
-        console.error("Error sending message:", error.message);
+        console.error("PUTANGINA NAG ERROR NANAMAN:", error.message);
         const errorEmbed = new EmbedBuilder()
             .setColor('#FF0000')
-            .setDescription("⚠️ **Unable to send message. Check bot permissions.**");
+            .setDescription("⚠️ **GAGO! DI MAKAPAG SEND NG MESSAGE! AYUSIN MO MUNA YANG PERMISSION KO BAGO KA MAGMAARTE! KINGINA MO!**");
         await channel.send({ embeds: [errorEmbed] });
     }
 }
 
-function initializePlayer(client) {
-    const nodes = config.nodes.map(node => ({
-        name: node.name,
-        host: node.host,
-        port: node.port,
-        password: node.password,
-        secure: node.secure,
-        reconnectTimeout: 5000,
-        reconnectTries: Infinity
-    }));
-
-    client.riffy = new Riffy(client, nodes, {
-        send: (payload) => {
-            const guildId = payload.d.guild_id;
-            if (!guildId) return;
-
-            const guild = client.guilds.cache.get(guildId);
-            if (guild) guild.shard.send(payload);
-        },
-        defaultSearchPlatform: "ytmsearch",
-        restVersion: "v4",
-    });
-
-    let currentTrackMessageId = null;
-    let collector = null;
-
-    client.riffy.on("nodeConnect", node => {
-        console.log(`${colors.cyan}[ LAVALINK ]${colors.reset} ${colors.green}Node ${node.name} Connected ✅${colors.reset}`);
-    });
-    
-    client.riffy.on("nodeError", (node, error) => {
-        console.log(`${colors.cyan}[ LAVALINK ]${colors.reset} ${colors.red}Node ${node.name} Error ❌ | ${error.message}${colors.reset}`);
-    });
-
-    client.riffy.on("trackStart", async (player, track) => {
-        const channel = client.channels.cache.get(player.textChannel);
-        const trackUri = track.info.uri;
-        const requester = requesters.get(trackUri);
-
-        try {
-            const musicard = await Dynamic({
-                thumbnailImage: track.info.thumbnail || 'https://example.com/default_thumbnail.png',
-                backgroundColor: '#070707',
-                progress: 10,
-                progressColor: '#FF7A00',
-                progressBarColor: '#5F2D00',
-                name: track.info.title,
-                nameColor: '#FF7A00',
-                author: track.info.author || 'Unknown Artist',
-                authorColor: '#696969',
-            });
-
-            // Save the generated card to a file
-            const cardPath = path.join(__dirname, 'musicard.png');
-            fs.writeFileSync(cardPath, musicard);
-
-            // Prepare the attachment and embed
-            const attachment = new AttachmentBuilder(cardPath, { name: 'musicard.png' });
-            const embed = new EmbedBuilder()
-            .setAuthor({ 
-                name: 'Playing Song..', 
-                iconURL: musicIcons.playerIcon,
-                url: config.SupportServer
-            })
-            .setFooter({ text: `Developed by SSRR | Prime Music v1.2`, iconURL: musicIcons.heartIcon })
-            .setTimestamp()
-            .setDescription(  
-                `- **Title:** [${track.info.title}](${track.info.uri})\n` +
-                `- **Author:** ${track.info.author || 'Unknown Artist'}\n` +
-                `- **Length:** ${formatDuration(track.info.length)}\n` +
-                `- **Requester:** ${requester}\n` +
-                `- **Source:** ${track.info.sourceName}\n` + '**- Controls :**\n 🔁 `Loop`, ❌ `Disable`, ⏭️ `Skip`, 📜 `Queue`, 🗑️ `Clear`\n ⏹️ `Stop`, ⏸️ `Pause`, ▶️ `Resume`, 🔊 `Vol +`, 🔉 `Vol -`')
-            .setImage('attachment://musicard.png')
-            .setColor('#FF7A00');
-
-          
-            const actionRow1 = createActionRow1(false);
-            const actionRow2 = createActionRow2(false);
-
-            const message = await sendMessageWithPermissionsCheck(channel, embed, attachment, actionRow1, actionRow2);
-            if (message) {
-                currentTrackMessageId = message.id;
-
-                if (collector) collector.stop(); 
-                collector = setupCollector(client, player, channel, message);
-            }
-
-        } catch (error) {
-            console.error("Error creating or sending music card:", error.message);
-            const errorEmbed = new EmbedBuilder()
-                .setColor('#FF0000')
-                .setDescription("⚠️ **Unable to load track card. Continuing playback...**");
-            await channel.send({ embeds: [errorEmbed] });
-        }
-    });
-
-    
-    client.riffy.on("trackEnd", async (player) => {
-        await disableTrackMessage(client, player);
-        currentTrackMessageId = null;
-    });
-
-    client.riffy.on("playerDisconnect", async (player) => {
-        await disableTrackMessage(client, player);
-        currentTrackMessageId = null;
-    });
-
-    client.riffy.on("queueEnd", async (player) => {
-        const channel = client.channels.cache.get(player.textChannel);
-        const guildId = player.guildId;
-    
-        try {
-         
-            const autoplaySetting = await autoplayCollection.findOne({ guildId });
-    
-            if (autoplaySetting?.autoplay) {
-                //console.log(`Autoplay is enabled for guild: ${guildId}`);
-                const nextTrack = await player.autoplay(player);
-    
-                if (!nextTrack) {
-                    player.destroy();
-                    await channel.send("⚠️ **No more tracks to autoplay. Disconnecting...**");
-                }
-            } else {
-                console.log(`Autoplay is disabled for guild: ${guildId}`);
-                player.destroy();
-                await channel.send("🎶 **Queue has ended. Autoplay is disabled.**");
-            }
-        } catch (error) {
-            console.error("Error handling autoplay:", error);
-            player.destroy();
-            await channel.send("👾**Queue Empty! Disconnecting...**");
-        }
-    });
-    
-    async function disableTrackMessage(client, player) {
-        const channel = client.channels.cache.get(player.textChannel);
-        if (!channel || !currentTrackMessageId) return;
-
-        try {
-            const message = await channel.messages.fetch(currentTrackMessageId);
-            if (message) {
-                const disabledRow1 = createActionRow1(true);
-                const disabledRow2 = createActionRow2(true);
-                await message.edit({ components: [disabledRow1, disabledRow2] });
-            }
-        } catch (error) {
-            console.error("Failed to disable message components:", error);
-        }
-    }
-}
-function formatDuration(ms) {
-    const seconds = Math.floor((ms / 1000) % 60);
-    const minutes = Math.floor((ms / (1000 * 60)) % 60);
-    const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
-
-    return [
-        hours > 0 ? `${hours}h` : null,
-        minutes > 0 ? `${minutes}m` : null,
-        `${seconds}s`,
-    ]
-        .filter(Boolean)
-        .join(' ');
-}
-function setupCollector(client, player, channel, message) {
-    const filter = i => [
-        'loopToggle', 'skipTrack', 'disableLoop', 'showQueue', 'clearQueue',
-        'stopTrack', 'pauseTrack', 'resumeTrack', 'volumeUp', 'volumeDown'
-    ].includes(i.customId);
-
-    const collector = message.createMessageComponentCollector({ filter, time: 600000 }); // Set timeout if desired
-
-    collector.on('collect', async i => {
-        await i.deferUpdate();
-
-        const member = i.member;
-        const voiceChannel = member.voice.channel;
-        const playerChannel = player.voiceChannel;
-
-        if (!voiceChannel || voiceChannel.id !== playerChannel) {
-            const vcEmbed = new EmbedBuilder()
-                .setColor(config.embedColor)
-                .setDescription('🔒 **You need to be in the same voice channel to use the controls!**');
-            const sentMessage = await channel.send({ embeds: [vcEmbed] });
-            setTimeout(() => sentMessage.delete().catch(console.error), config.embedTimeout * 1000);
-            return;
-        }
-
-        handleInteraction(i, player, channel);
-    });
-
-    collector.on('end', () => {
-        console.log("Collector stopped.");
-    });
-
-    return collector;
-}
-
-async function handleInteraction(i, player, channel) {
+async function handleButtonInteraction(i, player, channel) {
     switch (i.customId) {
         case 'loopToggle':
             toggleLoop(player, channel);
             break;
         case 'skipTrack':
             player.stop();
-            await sendEmbed(channel, "⏭️ **Player will play the next song!**");
+            await sendEmbed(channel, "⏭️ **PUTANGINA! AYAW MO NA? SIGE SKIP NA YANG KANTA NA YAN! NEXT TAYO BOBO! CHOOSY KA PA KINGINA MO!**");
             break;
         case 'disableLoop':
             disableLoop(player, channel);
@@ -250,27 +52,27 @@ async function handleInteraction(i, player, channel) {
             break;
         case 'clearQueue':
             player.queue.clear();
-            await sendEmbed(channel, "🗑️ **Queue has been cleared!**");
+            await sendEmbed(channel, "🗑️ **TANGINA MO! BINURA KO NA LAHAT! WAG KANG MAGREKLAMO KINGINA MO! IKAW NAG SABI EH!**");
             break;
         case 'stopTrack':
             player.stop();
             player.destroy();
-            await sendEmbed(channel, '⏹️ **Playback has been stopped and player destroyed!**');
+            await sendEmbed(channel, '⏹️ **AYAW MO NA TALAGA? SIGE TUMIGIL NA! UMALIS KA NA DITO GAGO! BYE TANGINA MO!**');
             break;
         case 'pauseTrack':
             if (player.paused) {
-                await sendEmbed(channel, '⏸️ **Playback is already paused!**');
+                await sendEmbed(channel, '⏸️ **BOBO KA BA?! NASA PAUSE NA NGA EH! GAMITIN MO MATA MO GAGO!**');
             } else {
                 player.pause(true);
-                await sendEmbed(channel, '⏸️ **Playback has been paused!**');
+                await sendEmbed(channel, '⏸️ **OH TEKA LANG AH! NAKA-PAUSE MUNA! MAGPAHINGA KA MUNA GAGO! IHING IHI KA NA BA?!**');
             }
             break;
         case 'resumeTrack':
             if (!player.paused) {
-                await sendEmbed(channel, '▶️ **Playback is already resumed!**');
+                await sendEmbed(channel, '▶️ **PUTANGINA MO! TUMUTUGTOG NA NGA EH! BINGI KA BA O TANGA KA LANG TALAGA?!**');
             } else {
                 player.pause(false);
-                await sendEmbed(channel, '▶️ **Playback has been resumed!**');
+                await sendEmbed(channel, '▶️ **SIGE NA! TULOY NA YANG KANTA! PARTY PARTY GAGO! WAG KANG TATANGA TANGA DYAN!**');
             }
             break;
         case 'volumeUp':
@@ -282,73 +84,200 @@ async function handleInteraction(i, player, channel) {
     }
 }
 
-async function sendEmbed(channel, message) {
-    const embed = new EmbedBuilder().setColor(config.embedColor).setDescription(message);
-    const sentMessage = await channel.send({ embeds: [embed] });
-    setTimeout(() => sentMessage.delete().catch(console.error), config.embedTimeout * 1000);
-}
-
 function adjustVolume(player, channel, amount) {
     const newVolume = Math.min(100, Math.max(10, player.volume + amount));
     if (newVolume === player.volume) {
-        sendEmbed(channel, amount > 0 ? '🔊 **Volume is already at maximum!**' : '🔉 **Volume is already at minimum!**');
+        sendEmbed(channel, amount > 0 ? 
+            '🔊 **TANGINA MO TALAGA! NASA MAXIMUM NA NGA EH! BINGI KA NA BA GAGO?! GUSTO MO MASIRA TENGA MO?!**' : 
+            '🔉 **GAGO KA BA?! NASA MINIMUM NA! ANO PA GUSTO MO? PABULONG?! TANGA KA BA?!**');
     } else {
         player.setVolume(newVolume);
-        sendEmbed(channel, `🔊 **Volume changed to ${newVolume}%!**`);
+        sendEmbed(channel, `🔊 **OH VOLUME ${newVolume}% NA GAGO! RINIG NA BA NG MGA KAPITBAHAY MO?! TANGINA MO TALAGA!**`);
     }
 }
 
-function formatTrack(track) {
-    if (!track || typeof track !== 'string') return track;
-    
-    const match = track.match(/\[(.*?) - (.*?)\]\((.*?)\)/);
-    if (match) {
-        const [, title, author, uri] = match;
-        return `[${title} - ${author}](${uri})`;
-    }
-    
-    return track;
+async function sendEmbed(channel, message) {
+    const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setDescription(message);
+    const sentMessage = await channel.send({ embeds: [embed] });
+    setTimeout(() => sentMessage.delete().catch(() => console.log('PUTANGINA DI MADELETE YUNG MESSAGE! HAYAAN MO NA YAN GAGO!')), 5000);
 }
 
 function toggleLoop(player, channel) {
     player.setLoop(player.loop === "track" ? "queue" : "track");
-    sendEmbed(channel, player.loop === "track" ? "🔁 **Track loop is activated!**" : "🔁 **Queue loop is activated!**");
+    sendEmbed(channel, player.loop === "track" ?
+        "🔁 **PAULIT ULIT NA YANG KANTA! WALA KA BANG IBANG ALAM?! PURO KA PAREHAS KINGINA MO!**" :
+        "🔁 **UULITIN KO LAHAT NG NASA QUEUE! DAMI MONG ARTE GAGO! MAGDAGDAG KA NA LANG NG KANTA!**");
 }
 
 function disableLoop(player, channel) {
     player.setLoop("none");
-    sendEmbed(channel, "❌ **Loop is disabled!**");
+    sendEmbed(channel, "❌ **AYAW MO NA PAULIT ULIT? SIGE! WAG NA NGA! IKAW BAHALA SA BUHAY MO GAGO!**");
 }
 
 function showNowPlaying(channel, player) {
     if (!player || !player.current || !player.current.info) {
-        sendEmbed(channel, "🚫 **No song is currently playing.**");
+        sendEmbed(channel, "🚫 **WALANG TUMUTUGTOG GAGO! MAGPATUGTOG KA MUNA BAGO KA MAGTANONG! BOBO KA BA?!**");
         return;
     }
 
     const track = player.current.info;
-    sendEmbed(channel, `🎵 **Now Playing:** [${track.title}](${track.uri}) - ${track.author}`);
+    sendEmbed(channel, `🎵 **KASALUKUYANG TUMUTUGTOG:** [${track.title}](${track.uri}) - ${track.author}\n**PUTA ANG GANDA NG KANTANG TO GAGO! NAPAKAGANDA! SHEEEESH! 🔥**`);
+}
+
+async function handleTrackStart(client, player, track) {
+    const channel = client.channels.cache.get(player.textChannel);
+    const trackUri = track.info.uri;
+    const requester = requesters.get(trackUri); // Assuming 'requesters' is defined elsewhere
+
+    try {
+        const musicard = await Dynamic({ // Assuming 'Dynamic' is defined elsewhere
+            thumbnailImage: track.info.thumbnail || 'https://example.com/default_thumbnail.png',
+            backgroundColor: '#070707',
+            progress: 10,
+            progressColor: '#FF7A00',
+            progressBarColor: '#5F2D00',
+            name: track.info.title,
+            nameColor: '#FF7A00',
+            author: track.info.author || 'WALANG PANGALAN GAGO! BAKA INDIE!',
+            authorColor: '#696969',
+        });
+
+        const cardPath = path.join(__dirname, 'musicard.png');
+        fs.writeFileSync(cardPath, musicard);
+
+        const attachment = new AttachmentBuilder(cardPath, { name: 'musicard.png' });
+        const embed = new EmbedBuilder()
+            .setAuthor({
+                name: 'PUTANGINA! PINAPATUGTOG KO NA YANG KANTA MO GAGO!',
+                iconURL: musicIcons.playerIcon, // Assuming 'musicIcons' is defined elsewhere
+                url: config.SupportServer // Assuming 'config' is defined elsewhere
+            })
+            .setFooter({ text: `GAWA NG PINAKA ASTIG NA BOT SA BUONG UNIVERSE! WAG KANG MAGHANAP NG IBA GAGO! | v1.2`, iconURL: musicIcons.heartIcon }) // Assuming 'musicIcons' is defined elsewhere
+            .setTimestamp()
+            .setDescription(
+                `**PUTA! PAKINGGAN MO TO GAGO, SIGURADONG MAGUGUSTUHAN MO TO!**\n\n` +
+                `👑 **TITLE:** [${track.info.title}](${track.info.uri})\n` +
+                `🎤 **ARTIST:** ${track.info.author || 'WALANG PANGALAN! BAKA INDIE GAGO!'}\n` +
+                `⏱️ **TAGAL:** ${formatDuration(track.info.length)}\n` + // Assuming 'formatDuration' is defined elsewhere
+                `🎵 **HINILING NG GAGONG TO:** ${requester}\n` +
+                `🎧 **SOURCE:** ${track.info.sourceName}\n\n` +
+                `**CONTROLS PARA SA MGA BOBONG KATULAD MO:**\n` +
+                `🔁 \`Ulitin\` | ❌ \`Wag na\` | ⏭️ \`Skip\` | 📜 \`Queue\` | 🗑️ \`Clear\`\n` +
+                `⏹️ \`Stop\` | ⏸️ \`Pause\` | ▶️ \`Play\` | 🔊 \`Lakasan\` | 🔉 \`Hinaan\`\n\n` +
+                `**SHEEEESH! NAPAKAGANDA NG TASTE MO SA MUSIC GAGO! SOLID TO! 🔥**`)
+            .setImage('attachment://musicard.png')
+            .setColor('#FF7A00');
+
+        const actionRow1 = createActionRow1(false);
+        const actionRow2 = createActionRow2(false);
+
+        return await sendMessageWithPermissionsCheck(channel, embed, attachment, actionRow1, actionRow2);
+    } catch (error) {
+        console.error("PUTANGINA! ERROR SA PAGCREATE NG MUSIC CARD:", error.message);
+        const errorEmbed = new EmbedBuilder()
+            .setColor('#FF0000')
+            .setDescription("⚠️ **KINGINA! DI MAGAWA YUNG CARD! PERO TULOY PA RIN TAYO SA PAGPAPATUGTOG GAGO!**");
+        await channel.send({ embeds: [errorEmbed] });
+    }
+}
+
+async function handleQueueEnd(client, player) {
+    const channel = client.channels.cache.get(player.textChannel);
+    const guildId = player.guildId;
+
+    try {
+        const autoplaySetting = await autoplayCollection.findOne({ guildId }); // Assuming 'autoplayCollection' is defined elsewhere
+
+        if (autoplaySetting?.autoplay) {
+            const nextTrack = await player.autoplay(player);
+
+            if (!nextTrack) {
+                player.destroy();
+                await channel.send("⚠️ **PUTANGINA WALA NA AKONG MAKITANG KANTA! UMALIS NA LANG AKO GAGO!**");
+            }
+        } else {
+            console.log(`WALANG AUTOPLAY SA GUILD ${guildId} GAGO!`);
+            player.destroy();
+            await channel.send("🎶 **UBOS NA YUNG QUEUE GAGO! MAGPATUGTOG KA ULIT KUNG GUSTO MO PA!**");
+        }
+    } catch (error) {
+        console.error("PUTANGINA MAY ERROR SA AUTOPLAY:", error);
+        player.destroy();
+        await channel.send("👾 **TANGINA WALA NANG LAMAN YUNG QUEUE! AALIS NA KO GAGO!**");
+    }
 }
 
 function createActionRow1(disabled) {
     return new ActionRowBuilder()
         .addComponents(
-            new ButtonBuilder().setCustomId("loopToggle").setEmoji('🔁').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("disableLoop").setEmoji('❌').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("skipTrack").setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("showQueue").setEmoji('💎').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("clearQueue").setEmoji('🗑️').setStyle(ButtonStyle.Secondary).setDisabled(disabled)
+            new ButtonBuilder()
+                .setCustomId("loopToggle")
+                .setEmoji('🔁')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("ULIT-ULITIN GAGO!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("disableLoop")
+                .setEmoji('❌')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("WAG NA KINGINA!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("skipTrack")
+                .setEmoji('⏭️')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("NEXT KANTA BOBO!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("showQueue")
+                .setEmoji('💎')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("LINEUP PRE! SOLID TO!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("clearQueue")
+                .setEmoji('🗑️')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("CLEAR LAHAT GAGO!")
+                .setDisabled(disabled)
         );
 }
 
 function createActionRow2(disabled) {
     return new ActionRowBuilder()
         .addComponents(
-            new ButtonBuilder().setCustomId("stopTrack").setEmoji('⏹️').setStyle(ButtonStyle.Danger).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("pauseTrack").setEmoji('⏸️').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("resumeTrack").setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("volumeUp").setEmoji('🔊').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-            new ButtonBuilder().setCustomId("volumeDown").setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(disabled)
+            new ButtonBuilder()
+                .setCustomId("stopTrack")
+                .setEmoji('⏹️')
+                .setStyle(ButtonStyle.Danger)
+                .setLabel("TUMIGIL KA TANGINA!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("pauseTrack")
+                .setEmoji('⏸️')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("TEKA LANG GAGO!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("resumeTrack")
+                .setEmoji('▶️')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("TULOY NA KINGINA!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("volumeUp")
+                .setEmoji('🔊')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("LAKASAN PA GAGO!")
+                .setDisabled(disabled),
+            new ButtonBuilder()
+                .setCustomId("volumeDown")
+                .setEmoji('🔉')
+                .setStyle(ButtonStyle.Secondary)
+                .setLabel("HINAAN MO TANGA!")
+                .setDisabled(disabled)
         );
 }
 
