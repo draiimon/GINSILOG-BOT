@@ -37,7 +37,10 @@ fs.readdir("./events", (_err, files) => {
 
 client.commands = [];
 fs.readdir(config.commandsDir, (err, files) => {
-  if (err) throw err;
+  if (err) {
+    console.log(`${colors.red}[ ERROR ]${colors.reset} ${colors.yellow}PUTANGINA NAMAN ANONG GINAGAWA MO?! MAY ERROR SA COMMANDS DIRECTORY!${colors.reset}`);
+    throw err;
+  }
   files.forEach(async (f) => {
     try {
       if (f.endsWith(".js")) {
@@ -49,6 +52,7 @@ fs.readdir(config.commandsDir, (err, files) => {
         });
       }
     } catch (err) {
+      console.log(`${colors.red}[ ERROR ]${colors.reset} ${colors.yellow}TANGA MO BA?! MAY MALI SA COMMAND FILE: ${f}!!${colors.reset}`);
       console.log(err);
     }
   });
@@ -66,8 +70,9 @@ client.login(config.TOKEN || process.env.TOKEN).catch((e) => {
   console.log(`${colors.magenta}${colors.bright}🔐 TOKEN VERIFICATION${colors.reset}`);
   console.log('─'.repeat(40));
   console.log(`${colors.cyan}[ TOKEN ]${colors.reset} ${colors.red}Authentication Failed ❌${colors.reset}`);
-  console.log(`${colors.gray}Error: Turn On Intents or Reset New Token${colors.reset}`);
+  console.log(`${colors.gray}Error: BOBO KA BA?! TURN ON INTENTS O GUMAWA NG BAGONG TOKEN!!!${colors.reset}`);
 });
+
 connectToDatabase().then(() => {
   console.log('\n' + '─'.repeat(40));
   console.log(`${colors.magenta}${colors.bright}🕸️  DATABASE STATUS${colors.reset}`);
@@ -78,7 +83,7 @@ connectToDatabase().then(() => {
   console.log(`${colors.magenta}${colors.bright}🕸️  DATABASE STATUS${colors.reset}`);
   console.log('─'.repeat(40));
   console.log(`${colors.cyan}[ DATABASE ]${colors.reset} ${colors.red}Connection Failed ❌${colors.reset}`);
-  console.log(`${colors.gray}Error: ${err.message}${colors.reset}`);
+  console.log(`${colors.gray}ERROR: ${err.message} - ANONG GINAGAWA MO?! AYUSIN MO TO, BOBO!${colors.reset}`);
 });
 
 const express = require("express");
