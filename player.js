@@ -8,15 +8,15 @@ const colors = require('./UI/colors/colors');
 const fs = require("fs");
 const path = require("path");
 const { autoplayCollection } = require('./mongodb.js');
+
 async function sendMessageWithPermissionsCheck(channel, embed, attachment, actionRow1, actionRow2) {
     try {
-   
         const permissions = channel.permissionsFor(channel.guild.members.me);
         if (!permissions.has(PermissionsBitField.Flags.SendMessages) ||
             !permissions.has(PermissionsBitField.Flags.EmbedLinks) ||
             !permissions.has(PermissionsBitField.Flags.AttachFiles) ||
             !permissions.has(PermissionsBitField.Flags.UseExternalEmojis)) {
-             console.error("PUTANGINA MO! KULANG PERMISSION KO GAGO! PAANO AKO MAGPAPATUGTOG NYAN?! AYUSIN MO MUNA YANG PERMISSION KO BOBO!");
+            console.error("PUTANGINA MO GAGO! KULANG PERMISSION KO! BOBO KA BA?! HINDI AKO MAKAPAG SEND NG MESSAGE DAHIL SAYO!");
             return;
         }
 
@@ -35,7 +35,208 @@ async function sendMessageWithPermissionsCheck(channel, embed, attachment, actio
     }
 }
 
-async function handleButtonInteraction(i, player, channel) {
+function initializePlayer(client) {
+    const nodes = config.nodes.map(node => ({
+        name: node.name,
+        host: node.host,
+        port: node.port,
+        password: node.password,
+        secure: node.secure,
+        reconnectTimeout: 5000,
+        reconnectTries: Infinity
+    }));
+
+    client.riffy = new Riffy(client, nodes, {
+        send: (payload) => {
+            const guildId = payload.d.guild_id;
+            if (!guildId) return;
+
+            const guild = client.guilds.cache.get(guildId);
+            if (guild) guild.shard.send(payload);
+        },
+        defaultSearchPlatform: "ytmsearch",
+        restVersion: "v4",
+    });
+
+    let currentTrackMessageId = null;
+    let collector = null;
+
+    client.riffy.on("nodeConnect", node => {
+        console.log(`${colors.cyan}[ LAVALINK ]${colors.reset} ${colors.green}PUTANGINA! NODE ${node.name} CONNECTED NA GAGO! ✅${colors.reset}`);
+    });
+    
+    client.riffy.on("nodeError", (node, error) => {
+        console.log(`${colors.cyan}[ LAVALINK ]${colors.reset} ${colors.red}TANGINA! MAY ERROR SA NODE ${node.name} GAGO! ❌ | ${error.message}${colors.reset}`);
+    });
+
+    client.riffy.on("trackStart", async (player, track) => {
+        const channel = client.channels.cache.get(player.textChannel);
+        const trackUri = track.info.uri;
+        const requester = requesters.get(trackUri);
+
+        try {
+            const musicard = await Dynamic({
+                thumbnailImage: track.info.thumbnail || 'https://example.com/default_thumbnail.png',
+                backgroundColor: '#070707',
+                progress: 10,
+                progressColor: '#FF7A00',
+                progressBarColor: '#5F2D00',
+                name: track.info.title,
+                nameColor: '#FF7A00',
+                author: track.info.author || 'WALANG PANGALAN GAGO! BAKA INDIE!',
+                authorColor: '#696969',
+            });
+
+            // Save the generated card to a file
+            const cardPath = path.join(__dirname, 'musicard.png');
+            fs.writeFileSync(cardPath, musicard);
+
+            // Prepare the attachment and embed
+            const attachment = new AttachmentBuilder(cardPath, { name: 'musicard.png' });
+            const embed = new EmbedBuilder()
+            .setAuthor({ 
+                name: 'PUTANGINA! PINAPATUGTOG KO NA YANG KANTA MO GAGO!', 
+                iconURL: musicIcons.playerIcon,
+                url: config.SupportServer
+            })
+            .setFooter({ text: `GAWA NG PINAKA ASTIG NA BOT SA BUONG UNIVERSE! WAG KANG MAGHANAP NG IBA GAGO! | v1.2`, iconURL: musicIcons.heartIcon })
+            .setTimestamp()
+            .setDescription(  
+                `**PUTA! PAKINGGAN MO TO GAGO, NAPAKAGANDA!**\n\n` +
+                `👑 **TITLE:** [${track.info.title}](${track.info.uri})\n` +
+                `🎤 **ARTIST:** ${track.info.author || 'WALANG PANGALAN! BAKA INDIE GAGO!'}\n` +
+                `⏱️ **TAGAL:** ${formatDuration(track.info.length)}\n` +
+                `🎵 **HINILING NG GAGONG TO:** ${requester}\n` +
+                `🎧 **SOURCE:** ${track.info.sourceName}\n` + 
+                `**COMMANDS PARA SA MGA BOBONG KATULAD MO:**\n` +
+                `🔁 \`Ulitin\` | ❌ \`Wag na\` | ⏭️ \`Skip\` | 📜 \`Queue\` | 🗑️ \`Clear\`\n` +
+                `⏹️ \`Stop\` | ⏸️ \`Pause\` | ▶️ \`Play\` | 🔊 \`Lakasan\` | 🔉 \`Hinaan\`\n\n` +
+                `**PUTANGINA ANG GANDA NG TASTE MO SA MUSIC GAGO! SHEEEESH! 🔥**`)
+            .setImage('attachment://musicard.png')
+            .setColor('#FF7A00');
+
+            const actionRow1 = createActionRow1(false);
+            const actionRow2 = createActionRow2(false);
+
+            const message = await sendMessageWithPermissionsCheck(channel, embed, attachment, actionRow1, actionRow2);
+            if (message) {
+                currentTrackMessageId = message.id;
+
+                if (collector) collector.stop(); 
+                collector = setupCollector(client, player, channel, message);
+            }
+
+        } catch (error) {
+            console.error("PUTANGINA! ERROR SA PAGCREATE NG MUSIC CARD:", error.message);
+            const errorEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setDescription("⚠️ **KINGINA! DI MAGAWA YUNG CARD! PERO TULOY PA RIN TAYO SA PAGPAPATUGTOG GAGO!**");
+            await channel.send({ embeds: [errorEmbed] });
+        }
+    });
+
+    client.riffy.on("trackEnd", async (player) => {
+        await disableTrackMessage(client, player);
+        currentTrackMessageId = null;
+    });
+
+    client.riffy.on("playerDisconnect", async (player) => {
+        await disableTrackMessage(client, player);
+        currentTrackMessageId = null;
+    });
+
+    client.riffy.on("queueEnd", async (player) => {
+        const channel = client.channels.cache.get(player.textChannel);
+        const guildId = player.guildId;
+    
+        try {
+            const autoplaySetting = await autoplayCollection.findOne({ guildId });
+    
+            if (autoplaySetting?.autoplay) {
+                const nextTrack = await player.autoplay(player);
+    
+                if (!nextTrack) {
+                    player.destroy();
+                    await channel.send("⚠️ **PUTANGINA WALA NA AKONG MAKITANG KANTA! UMALIS NA LANG AKO GAGO!**");
+                }
+            } else {
+                console.log(`WALANG AUTOPLAY SA GUILD ${guildId} GAGO!`);
+                player.destroy();
+                await channel.send("🎶 **UBOS NA YUNG QUEUE GAGO! MAGPATUGTOG KA ULIT KUNG GUSTO MO PA!**");
+            }
+        } catch (error) {
+            console.error("PUTANGINA MAY ERROR SA AUTOPLAY:", error);
+            player.destroy();
+            await channel.send("👾 **TANGINA WALA NANG LAMAN YUNG QUEUE! AALIS NA KO GAGO!**");
+        }
+    });
+    
+    async function disableTrackMessage(client, player) {
+        const channel = client.channels.cache.get(player.textChannel);
+        if (!channel || !currentTrackMessageId) return;
+
+        try {
+            const message = await channel.messages.fetch(currentTrackMessageId);
+            if (message) {
+                const disabledRow1 = createActionRow1(true);
+                const disabledRow2 = createActionRow2(true);
+                await message.edit({ components: [disabledRow1, disabledRow2] });
+            }
+        } catch (error) {
+            console.error("PUTANGINANG ERROR TO! DI MA-DISABLE YUNG MESSAGE:", error);
+        }
+    }
+}
+
+function formatDuration(ms) {
+    const seconds = Math.floor((ms / 1000) % 60);
+    const minutes = Math.floor((ms / (1000 * 60)) % 60);
+    const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
+
+    return [
+        hours > 0 ? `${hours}h` : null,
+        minutes > 0 ? `${minutes}m` : null,
+        `${seconds}s`,
+    ]
+        .filter(Boolean)
+        .join(' ');
+}
+
+function setupCollector(client, player, channel, message) {
+    const filter = i => [
+        'loopToggle', 'skipTrack', 'disableLoop', 'showQueue', 'clearQueue',
+        'stopTrack', 'pauseTrack', 'resumeTrack', 'volumeUp', 'volumeDown'
+    ].includes(i.customId);
+
+    const collector = message.createMessageComponentCollector({ filter, time: 600000 });
+
+    collector.on('collect', async i => {
+        await i.deferUpdate();
+
+        const member = i.member;
+        const voiceChannel = member.voice.channel;
+        const playerChannel = player.voiceChannel;
+
+        if (!voiceChannel || voiceChannel.id !== playerChannel) {
+            const vcEmbed = new EmbedBuilder()
+                .setColor(config.embedColor)
+                .setDescription('PUTANGINA MO! PUMASOK KA MUNA SA VOICE CHANNEL BAGO KA MAGMAARTE! BOBO KA BA?! 🤬');
+            const sentMessage = await channel.send({ embeds: [vcEmbed] });
+            setTimeout(() => sentMessage.delete().catch(console.error), config.embedTimeout * 1000);
+            return;
+        }
+
+        handleInteraction(i, player, channel);
+    });
+
+    collector.on('end', () => {
+        console.log("TANGINA TUMIGIL NA YUNG COLLECTOR! TINATAMAD NA KO MAGPATUGTOG!");
+    });
+
+    return collector;
+}
+
+async function handleInteraction(i, player, channel) {
     switch (i.customId) {
         case 'loopToggle':
             toggleLoop(player, channel);
@@ -84,6 +285,14 @@ async function handleButtonInteraction(i, player, channel) {
     }
 }
 
+async function sendEmbed(channel, message) {
+    const embed = new EmbedBuilder()
+        .setColor(config.embedColor)
+        .setDescription(message);
+    const sentMessage = await channel.send({ embeds: [embed] });
+    setTimeout(() => sentMessage.delete().catch(() => console.log('PUTANGINA DI MADELETE YUNG MESSAGE! HAYAAN MO NA YAN GAGO!')), config.embedTimeout * 1000);
+}
+
 function adjustVolume(player, channel, amount) {
     const newVolume = Math.min(100, Math.max(10, player.volume + amount));
     if (newVolume === player.volume) {
@@ -96,18 +305,10 @@ function adjustVolume(player, channel, amount) {
     }
 }
 
-async function sendEmbed(channel, message) {
-    const embed = new EmbedBuilder()
-        .setColor('#FF0000')
-        .setDescription(message);
-    const sentMessage = await channel.send({ embeds: [embed] });
-    setTimeout(() => sentMessage.delete().catch(() => console.log('PUTANGINA DI MADELETE YUNG MESSAGE! HAYAAN MO NA YAN GAGO!')), 5000);
-}
-
 function toggleLoop(player, channel) {
     player.setLoop(player.loop === "track" ? "queue" : "track");
-    sendEmbed(channel, player.loop === "track" ?
-        "🔁 **PAULIT ULIT NA YANG KANTA! WALA KA BANG IBANG ALAM?! PURO KA PAREHAS KINGINA MO!**" :
+    sendEmbed(channel, player.loop === "track" ? 
+        "🔁 **PAULIT ULIT NA YANG KANTA! WALA KA BANG IBANG ALAM?! PURO KA PAREHAS KINGINA MO!**" : 
         "🔁 **UULITIN KO LAHAT NG NASA QUEUE! DAMI MONG ARTE GAGO! MAGDAGDAG KA NA LANG NG KANTA!**");
 }
 
@@ -124,89 +325,6 @@ function showNowPlaying(channel, player) {
 
     const track = player.current.info;
     sendEmbed(channel, `🎵 **KASALUKUYANG TUMUTUGTOG:** [${track.title}](${track.uri}) - ${track.author}\n**PUTA ANG GANDA NG KANTANG TO GAGO! NAPAKAGANDA! SHEEEESH! 🔥**`);
-}
-
-async function handleTrackStart(client, player, track) {
-    const channel = client.channels.cache.get(player.textChannel);
-    const trackUri = track.info.uri;
-    const requester = requesters.get(trackUri); // Assuming 'requesters' is defined elsewhere
-
-    try {
-        const musicard = await Dynamic({ // Assuming 'Dynamic' is defined elsewhere
-            thumbnailImage: track.info.thumbnail || 'https://example.com/default_thumbnail.png',
-            backgroundColor: '#070707',
-            progress: 10,
-            progressColor: '#FF7A00',
-            progressBarColor: '#5F2D00',
-            name: track.info.title,
-            nameColor: '#FF7A00',
-            author: track.info.author || 'WALANG PANGALAN GAGO! BAKA INDIE!',
-            authorColor: '#696969',
-        });
-
-        const cardPath = path.join(__dirname, 'musicard.png');
-        fs.writeFileSync(cardPath, musicard);
-
-        const attachment = new AttachmentBuilder(cardPath, { name: 'musicard.png' });
-        const embed = new EmbedBuilder()
-            .setAuthor({
-                name: 'PUTANGINA! PINAPATUGTOG KO NA YANG KANTA MO GAGO!',
-                iconURL: musicIcons.playerIcon, // Assuming 'musicIcons' is defined elsewhere
-                url: config.SupportServer // Assuming 'config' is defined elsewhere
-            })
-            .setFooter({ text: `GAWA NG PINAKA ASTIG NA BOT SA BUONG UNIVERSE! WAG KANG MAGHANAP NG IBA GAGO! | v1.2`, iconURL: musicIcons.heartIcon }) // Assuming 'musicIcons' is defined elsewhere
-            .setTimestamp()
-            .setDescription(
-                `**PUTA! PAKINGGAN MO TO GAGO, SIGURADONG MAGUGUSTUHAN MO TO!**\n\n` +
-                `👑 **TITLE:** [${track.info.title}](${track.info.uri})\n` +
-                `🎤 **ARTIST:** ${track.info.author || 'WALANG PANGALAN! BAKA INDIE GAGO!'}\n` +
-                `⏱️ **TAGAL:** ${formatDuration(track.info.length)}\n` + // Assuming 'formatDuration' is defined elsewhere
-                `🎵 **HINILING NG GAGONG TO:** ${requester}\n` +
-                `🎧 **SOURCE:** ${track.info.sourceName}\n\n` +
-                `**CONTROLS PARA SA MGA BOBONG KATULAD MO:**\n` +
-                `🔁 \`Ulitin\` | ❌ \`Wag na\` | ⏭️ \`Skip\` | 📜 \`Queue\` | 🗑️ \`Clear\`\n` +
-                `⏹️ \`Stop\` | ⏸️ \`Pause\` | ▶️ \`Play\` | 🔊 \`Lakasan\` | 🔉 \`Hinaan\`\n\n` +
-                `**SHEEEESH! NAPAKAGANDA NG TASTE MO SA MUSIC GAGO! SOLID TO! 🔥**`)
-            .setImage('attachment://musicard.png')
-            .setColor('#FF7A00');
-
-        const actionRow1 = createActionRow1(false);
-        const actionRow2 = createActionRow2(false);
-
-        return await sendMessageWithPermissionsCheck(channel, embed, attachment, actionRow1, actionRow2);
-    } catch (error) {
-        console.error("PUTANGINA! ERROR SA PAGCREATE NG MUSIC CARD:", error.message);
-        const errorEmbed = new EmbedBuilder()
-            .setColor('#FF0000')
-            .setDescription("⚠️ **KINGINA! DI MAGAWA YUNG CARD! PERO TULOY PA RIN TAYO SA PAGPAPATUGTOG GAGO!**");
-        await channel.send({ embeds: [errorEmbed] });
-    }
-}
-
-async function handleQueueEnd(client, player) {
-    const channel = client.channels.cache.get(player.textChannel);
-    const guildId = player.guildId;
-
-    try {
-        const autoplaySetting = await autoplayCollection.findOne({ guildId }); // Assuming 'autoplayCollection' is defined elsewhere
-
-        if (autoplaySetting?.autoplay) {
-            const nextTrack = await player.autoplay(player);
-
-            if (!nextTrack) {
-                player.destroy();
-                await channel.send("⚠️ **PUTANGINA WALA NA AKONG MAKITANG KANTA! UMALIS NA LANG AKO GAGO!**");
-            }
-        } else {
-            console.log(`WALANG AUTOPLAY SA GUILD ${guildId} GAGO!`);
-            player.destroy();
-            await channel.send("🎶 **UBOS NA YUNG QUEUE GAGO! MAGPATUGTOG KA ULIT KUNG GUSTO MO PA!**");
-        }
-    } catch (error) {
-        console.error("PUTANGINA MAY ERROR SA AUTOPLAY:", error);
-        player.destroy();
-        await channel.send("👾 **TANGINA WALA NANG LAMAN YUNG QUEUE! AALIS NA KO GAGO!**");
-    }
 }
 
 function createActionRow1(disabled) {
